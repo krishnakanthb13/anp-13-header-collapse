@@ -1,30 +1,72 @@
 (() => {
 // anp-13-header-collapse/lib/constants.js
 var ACTION_OPTIONS = {
+  COLLAPSE_ALL: 1,
+  EXPAND_ALL: 2,
+  ADVANCED: 3
+};
+var ADVANCED_ACTION = {
   COLLAPSE: 1,
   EXPAND: 2
 };
-var PROMPT_MESSAGE = "Select if you want to Expand or Collapse all Headers.";
-var PROMPT_CONFIG = {
+var ALL_HEADER_LEVELS = [1, 2, 3, 4, 5, 6];
+var INITIAL_PROMPT_MESSAGE = "Select if you want to Expand or Collapse Headers.";
+var INITIAL_PROMPT_CONFIG = {
   inputs: [
     {
-      label: "Select action",
+      label: "Action",
       type: "radio",
       options: [
-        { label: "Collapse", value: ACTION_OPTIONS.COLLAPSE },
-        { label: "Expand", value: ACTION_OPTIONS.EXPAND }
-      ]
+        { label: "Collapse All", value: ACTION_OPTIONS.COLLAPSE_ALL },
+        { label: "Expand All", value: ACTION_OPTIONS.EXPAND_ALL },
+        { label: "Advanced...", value: ACTION_OPTIONS.ADVANCED }
+      ],
+      value: ACTION_OPTIONS.COLLAPSE_ALL
     }
   ]
 };
-var ALERT_MESSAGE = "Please select either Collapse or Expand!";
+var ADVANCED_PROMPT_MESSAGE = "Configure Advanced Header Collapse / Expand";
+var ADVANCED_PROMPT_CONFIG = {
+  inputs: [
+    {
+      label: "Action",
+      type: "radio",
+      options: [
+        { label: "Collapse", value: ADVANCED_ACTION.COLLAPSE },
+        { label: "Expand", value: ADVANCED_ACTION.EXPAND }
+      ],
+      value: ADVANCED_ACTION.COLLAPSE
+    },
+    {
+      label: "Include H1 (#)",
+      type: "checkbox",
+      value: true
+    },
+    {
+      label: "Include H2 (##)",
+      type: "checkbox",
+      value: true
+    },
+    {
+      label: "Include H3 (###)",
+      type: "checkbox",
+      value: true
+    },
+    {
+      label: "Include H4\u2013H6 (####+)",
+      type: "checkbox",
+      value: false
+    }
+  ]
+};
+var ALERT_NO_LEVELS = "Please select at least one header level to target!";
 var HEADER_PATTERN = /^(#{1,6})(?:\s+(.*?)|$)\s*$/;
 var COLLAPSE_TAG_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/i;
 var CODE_BLOCK_FENCE_REGEX = /^\s*(```|~~~)/;
 var COLLAPSE_COMMENT = '<!-- {"collapsed":true} -->';
 
 // anp-13-header-collapse/lib/markdown.js
-function processMarkdown(markdown, shouldCollapse) {
+function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEVELS) {
   if (typeof markdown !== "string" || !markdown) {
     return markdown ?? "";
   }
@@ -45,6 +87,10 @@ function processMarkdown(markdown, shouldCollapse) {
       return line;
     }
     const hashes = headerMatch[1];
+    const level = hashes.length;
+    if (!targetLevels.includes(level)) {
+      return line;
+    }
     const contentAndComment = (headerMatch[2] || "").trim();
     const hasCollapse = COLLAPSE_TAG_REGEX.test(contentAndComment);
     if (shouldCollapse) {
@@ -64,22 +110,50 @@ function processMarkdown(markdown, shouldCollapse) {
 }
 
 // anp-13-header-collapse/lib/api.js
-async function promptCollapseAction(app) {
+async function promptInitialAction(app) {
   if (!app?.prompt) {
     console.error("[HeaderCollapse] app.prompt is unavailable");
     return null;
   }
   try {
-    const result = await app.prompt(PROMPT_MESSAGE, PROMPT_CONFIG);
+    const result = await app.prompt(INITIAL_PROMPT_MESSAGE, INITIAL_PROMPT_CONFIG);
     if (!result) {
-      if (typeof app.alert === "function") {
-        await app.alert(ALERT_MESSAGE);
-      }
       return null;
     }
     return result;
   } catch (err) {
     console.error("[HeaderCollapse] Failed to prompt user:", err);
+    return null;
+  }
+}
+async function promptAdvancedOptions(app) {
+  if (!app?.prompt) {
+    console.error("[HeaderCollapse] app.prompt is unavailable");
+    return null;
+  }
+  try {
+    const result = await app.prompt(ADVANCED_PROMPT_MESSAGE, ADVANCED_PROMPT_CONFIG);
+    if (!result || !Array.isArray(result)) {
+      return null;
+    }
+    const [actionVal, h1, h2, h3, h4h6] = result;
+    const targetLevels = [];
+    if (h1) targetLevels.push(1);
+    if (h2) targetLevels.push(2);
+    if (h3) targetLevels.push(3);
+    if (h4h6) targetLevels.push(4, 5, 6);
+    if (targetLevels.length === 0) {
+      if (typeof app.alert === "function") {
+        await app.alert(ALERT_NO_LEVELS);
+      }
+      return null;
+    }
+    return {
+      shouldCollapse: actionVal === ADVANCED_ACTION.COLLAPSE,
+      targetLevels
+    };
+  } catch (err) {
+    console.error("[HeaderCollapse] Failed to prompt advanced options:", err);
     return null;
   }
 }
@@ -118,12 +192,23 @@ var header_collapse_default = {
       if (typeof markdown !== "string") {
         return;
       }
-      const result = await promptCollapseAction(app);
-      if (!result) {
+      const action = await promptInitialAction(app);
+      if (!action) {
         return;
       }
-      const shouldCollapse = result === ACTION_OPTIONS.COLLAPSE;
-      const modifiedMarkdown = processMarkdown(markdown, shouldCollapse);
+      let shouldCollapse;
+      let targetLevels = ALL_HEADER_LEVELS;
+      if (action === ACTION_OPTIONS.ADVANCED) {
+        const advanced = await promptAdvancedOptions(app);
+        if (!advanced) {
+          return;
+        }
+        shouldCollapse = advanced.shouldCollapse;
+        targetLevels = advanced.targetLevels;
+      } else {
+        shouldCollapse = action === ACTION_OPTIONS.COLLAPSE_ALL;
+      }
+      const modifiedMarkdown = processMarkdown(markdown, shouldCollapse, targetLevels);
       if (modifiedMarkdown !== markdown) {
         await updateNoteContent(app, noteUUID, modifiedMarkdown);
       }
