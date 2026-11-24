@@ -1,0 +1,39 @@
+================================================================================
+TEST REPORT — HEADER COLLAPSE (anp-13-header-collapse)
+Date: 2026-11-24
+Auditor: Agent (scaffold_tests + anp_test)
+Target Bundle: anp-13-header-collapse/build/header-collapse.compiled.js
+================================================================================
+
+METRIC SUMMARY:
+- Total Test Suites: 3 / 3 PASSED
+- Total Tests: 54
+- Passed: 54
+- Failed: 0
+- Skipped: 0
+- Pass Rate: 100%
+- Confidence Score: 10/10
+- Regression Coverage: Yes (Full)
+
+TEST SUITE BREAKDOWN:
+1. test/markdown.test.js (25 tests)
+   - Happy Path: Standard H1-H3 collapse/expand, emojis, markdown formatting, full notes, selective level targeting ([1], [2, 3]).
+   - Edge Cases: Empty headings, hash-only headings, non-header 7+ hashes, CRLF preservation, untargeted levels untouched.
+   - Error Handling: Null, undefined, empty string, non-string input guards.
+   - Regression: Fenced code block preservation (``` and ~~~), whitespace tolerance in JSON collapse comments.
+
+2. test/api.test.js (21 tests)
+   - promptInitialAction: Collapse All (1), Expand All (2), Advanced (3), cancellation handling, unrecognized actions, null/missing app safety, rejection recovery.
+   - promptAdvancedOptions: Selective level extraction, cancellation, empty level selection warning alert, invalid action handling, error recovery.
+   - fetchNoteContent: Successful markdown retrieval, input validation guards, error propagation.
+   - updateNoteContent: Successful replacement, input validation guards, error propagation.
+
+3. test/header-collapse.test.js (8 tests)
+   - noteOption Orchestration: Collapse All flow, Expand All flow, Advanced selective level flow.
+   - Optimizations: Unchanged content write skipping (avoids redundant API writes).
+   - Defensive Boundaries: Null/missing app, missing noteUUID, prompt cancellation at Stage 1 and Stage 2.
+   - Error Handling: Exception catch boundary and user alert notification.
+
+================================================================================
+STATUS: ALL 54 TESTS PASSING (100% PASS RATE)
+================================================================================
