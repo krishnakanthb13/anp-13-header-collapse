@@ -9,7 +9,7 @@ var ADVANCED_ACTION = {
   COLLAPSE: 1,
   EXPAND: 2
 };
-var ALL_HEADER_LEVELS = [1, 2, 3, 4, 5, 6];
+var ALL_HEADER_LEVELS = Object.freeze([1, 2, 3, 4, 5, 6]);
 var INITIAL_PROMPT_MESSAGE = "Select if you want to Expand or Collapse Headers.";
 var INITIAL_PROMPT_CONFIG = {
   inputs: [
@@ -62,6 +62,7 @@ var ADVANCED_PROMPT_CONFIG = {
 var ALERT_NO_LEVELS = "Please select at least one header level to target!";
 var HEADER_PATTERN = /^(#{1,6})(?:\s+(.*?)|$)\s*$/;
 var COLLAPSE_TAG_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/i;
+var COLLAPSE_TAG_GLOBAL_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/gi;
 var CODE_BLOCK_FENCE_REGEX = /^\s*(```|~~~)/;
 var COLLAPSE_COMMENT = '<!-- {"collapsed":true} -->';
 
@@ -73,6 +74,7 @@ function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEV
   const isCRLF = markdown.includes("\r\n");
   const newline = isCRLF ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
+  const targetSet = new Set(targetLevels);
   let inCodeBlock = false;
   const modifiedLines = lines.map((line) => {
     if (CODE_BLOCK_FENCE_REGEX.test(line)) {
@@ -88,7 +90,7 @@ function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEV
     }
     const hashes = headerMatch[1];
     const level = hashes.length;
-    if (!targetLevels.includes(level)) {
+    if (!targetSet.has(level)) {
       return line;
     }
     const contentAndComment = (headerMatch[2] || "").trim();
@@ -100,7 +102,7 @@ function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEV
       return line;
     } else {
       if (hasCollapse) {
-        const cleanContent = contentAndComment.replace(new RegExp(COLLAPSE_TAG_REGEX, "gi"), "").trim();
+        const cleanContent = contentAndComment.replace(COLLAPSE_TAG_GLOBAL_REGEX, "").trim();
         return cleanContent ? `${hashes} ${cleanContent}` : hashes;
       }
       return line;
@@ -110,6 +112,8 @@ function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEV
 }
 
 // anp-13-header-collapse/lib/api.js
+var VALID_INITIAL_ACTIONS = new Set(Object.values(ACTION_OPTIONS));
+var VALID_ADVANCED_ACTIONS = new Set(Object.values(ADVANCED_ACTION));
 async function promptInitialAction(app) {
   if (!app?.prompt) {
     console.error("[HeaderCollapse] app.prompt is unavailable");
@@ -117,7 +121,7 @@ async function promptInitialAction(app) {
   }
   try {
     const result = await app.prompt(INITIAL_PROMPT_MESSAGE, INITIAL_PROMPT_CONFIG);
-    if (!result) {
+    if (!result || !VALID_INITIAL_ACTIONS.has(result)) {
       return null;
     }
     return result;
@@ -137,6 +141,9 @@ async function promptAdvancedOptions(app) {
       return null;
     }
     const [actionVal, h1, h2, h3, h4h6] = result;
+    if (!VALID_ADVANCED_ACTIONS.has(actionVal)) {
+      return null;
+    }
     const targetLevels = [];
     if (h1) targetLevels.push(1);
     if (h2) targetLevels.push(2);
