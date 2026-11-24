@@ -1,8 +1,8 @@
 # Test Report — Header Collapse (`anp-13-header-collapse`)
 
-**Date**: 2026-11-24  
-**Auditor**: Agent (`scaffold_tests` + `anp_test`)  
-**Scope**: `anp-13-header-collapse/test/`  
+**Date**: 2026-11-24
+**Version**: `v0.0.6`
+**Scope**: `anp-13-header-collapse/test/`
 **Target Bundle**: `anp-13-header-collapse/build/header-collapse.compiled.js`
 
 ---
@@ -12,75 +12,78 @@
 | Metric | Result |
 |:---|:---|
 | **Total Test Suites** | 3 / 3 ✅ |
-| **Total Tests** | 54 |
-| **Passed** | 54 ✅ |
+| **Total Tests** | 68 |
+| **Passed** | 68 ✅ |
 | **Failed** | 0 ❌ |
 | **Skipped** | 0 ⚠️ |
 | **Pass Rate** | **100%** |
-| **Confidence Score** | **10/10** (Full coverage across Happy Path, Edge Cases, Error Handling, and Regression) |
-| **Regression Coverage** | **Yes** (Full) |
+| **Confidence Score** | **10/10** (Happy Path, Edge Cases, Error Handling, Regression) |
 
 ---
 
 ## 2. Test Suites & Coverage Breakdown
 
-### 2.1 `test/markdown.test.js` (25 Tests)
+### 2.1 `test/markdown.test.js` (29 Tests)
 - **Happy Path**:
   - Default collapse of H1, H2, and H3 headers using Amplenote comment tags.
   - Default expansion of previously collapsed headers.
   - Preservation of header emojis (`# 🚀 Launch Plan`, `## 💡 Feature Ideas`).
   - Preservation of rich inline markdown (`**bold**`, `*italic*`, `` `code` ``, `[Docs](https://amplenote.com)`).
   - Processing of multi-section notes containing mixed paragraphs, lists, and headers.
-  - Selective level targeting: collapses ONLY H1 (`targetLevels = [1]`), collapses ONLY H2 and H3 (`targetLevels = [2, 3]`), expands ONLY H1.
+  - Selective level targeting: `[1]`, `[2, 3]`, and expand `[1]`.
 - **Edge Cases**:
   - Empty heading hashes with trailing space (`# `).
   - Bare heading hashes without trailing content (`###`).
-  - Lines with 7+ hashes (`#######`) correctly ignored as non-headers.
-  - Windows CRLF (`\r\n`) line ending preservation without newline corruption.
+  - Lines with 7+ hashes (`#######`) correctly ignored.
+  - CRLF (`\r\n`) line ending preservation.
   - Untargeted header levels left completely untouched.
+  - **Indented headings** (1–3 spaces) collapse/expand; four-space stays code.
+  - **Internal spacing preserved** on modified headings (`##    Heading`).
+  - **`collapsed:false`** normalized on collapse and stripped on expand.
+  - **Mixed LF/CRLF** preserved per line.
 - **Error Handling & Input Guards**:
   - Handles `null`, `undefined`, and empty string inputs gracefully.
-  - Non-string inputs (numbers, objects) return safely without throwing.
+  - **Non-string input returns `""`** without throwing.
 - **Regression Checks**:
-  - Fenced code blocks with `#` comments (Python, Ruby, Bash, etc.) untouched during collapse and expansion.
-  - Tilde-fenced code blocks (`~~~`) correctly recognized and protected.
+  - Fenced code blocks with `#` comments untouched during collapse and expansion.
+  - Tilde-fenced code blocks (`~~~`) recognized and protected.
+  - **Four-backtick block containing ``` lines** is not closed early (nested-fence state machine).
+  - **`~~~` inside a ``` block** is not treated as a closing fence.
   - Whitespace tolerance in JSON tags (`<!-- {"collapsed": true} -->` and `<!-- { "collapsed" : true } -->`) detected and not duplicated.
   - Expansion correctly removes collapse tags with whitespace variations.
 
-### 2.2 `test/api.test.js` (21 Tests)
+### 2.2 `test/api.test.js` (27 Tests)
 - **promptInitialAction**:
   - Returns `COLLAPSE_ALL` (1), `EXPAND_ALL` (2), and `ADVANCED` (3).
-  - Returns `null` on user cancellation.
-  - Returns `null` on unrecognized action responses.
-  - Error recovery: returns `null` safely if `app` is missing, `app.prompt` is missing, or `app.prompt` rejects.
+  - Returns `null` on cancellation or unrecognized action.
+  - Coercion and error recovery with missing `app`/`prompt` or rejected prompt.
 - **promptAdvancedOptions**:
-  - Returns `{ shouldCollapse: true, targetLevels }` matching checked levels.
-  - Returns `null` on user cancellation.
-  - Displays `ALERT_NO_LEVELS` alert and returns `null` if no levels are checked.
-  - Returns `null` on invalid action values.
-  - Error recovery: returns `null` safely on missing `app` or rejected promise.
+  - Returns `{ shouldCollapse, targetLevels }` matching checked levels.
+  - Returns `null` on cancellation, invalid action, or **short/partial result array**.
+  - **Coerces numeric-string action values.**
+  - Alerts `ALERT_NO_LEVELS` and returns `null` when no levels are checked.
 - **fetchNoteContent**:
-  - Fetches note content via `app.getNoteContent({ uuid: noteUUID })`.
-  - Throws descriptive error if `app` is missing or invalid.
-  - Throws descriptive error if `noteUUID` is missing.
-  - Rethrows API errors with diagnostic logging.
+  - Fetches content via `app.getNoteContent({ uuid })`; validates input; rethrows errors.
 - **updateNoteContent**:
-  - Replaces note content via `app.replaceNoteContent({ uuid: noteUUID }, content)`.
-  - Throws descriptive error if `app` is missing or invalid.
-  - Throws descriptive error if `noteUUID` is missing.
-  - Rethrows API errors with diagnostic logging.
+  - Replaces content and **reports success (`true`)**.
+  - **Returns `false` when the host reports the write was not performed.**
+  - **Throws before writing when content exceeds 200,000 characters.**
+  - Validates input and rethrows host errors.
 
-### 2.3 `test/header-collapse.test.js` (8 Tests)
+### 2.3 `test/header-collapse.test.js` (12 Tests)
 - **Plugin Orchestration (`noteOption`)**:
-  - Complete flow for "Collapse All".
-  - Complete flow for "Expand All".
-  - Complete two-stage flow for "Advanced..." with selective level targeting.
-- **Performance Optimizations**:
-  - Skips `app.replaceNoteContent` write call if the note is already collapsed or expanded (avoids redundant sync/network writes).
+  - Collapse All, Expand All, and Advanced selective flows.
+  - Skips `replaceNoteContent` when content is unchanged.
 - **Defensive Boundaries**:
-  - Exits safely without throwing if `app` is null.
-  - Exits safely without throwing if `noteUUID` is empty.
-  - Exits safely without writing if user cancels the initial prompt.
-  - Exits safely without writing if user cancels the advanced prompt.
+  - Exits safely on missing `app`/`noteUUID` and on Stage 1/Stage 2 cancellation.
 - **Error Handling**:
-  - Catches runtime exceptions and alerts the user via `app.alert`.
+  - Catches runtime exceptions and alerts the user.
+  - **Does not alert when the host resolves `false` but the write actually applied** (read-back verification).
+  - **Logs (does not alert) when the host resolves `false` and content is unchanged.**
+  - **Alerts when the note content is not a string.**
+
+---
+
+## 3. Notes
+- Some Amplenote versions resolve `replaceNoteContent` with `false` even after a successful write. The suite covers both the "write applied" and "write did not apply" branches.
+- The stray `header-collapse.test.log` artifact was removed in v0.0.6.

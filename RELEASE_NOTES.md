@@ -1,5 +1,25 @@
 # Release Notes: Header Collapse
 
+## v0.0.6 (2026-11-24)
+
+### 🐛 Bug Fixes & Correctness
+- **Nested / longer fenced code blocks**: Replaced the naive fence toggle with a state machine that tracks the marker character and length. A ```` ```` ```` block containing ``` lines (or `~~~` inside a ``` block) no longer closes early, so code inside it is never modified.
+- **Indented headings**: ATX headings indented by up to three spaces (`   # Title`) are now collapsed/expanded correctly (per GFM); four-space indentation remains treated as code.
+- **Stale `collapsed:false` annotations**: Normalized to a single canonical `{"collapsed":true}` on collapse, and fully stripped on expand, instead of appending a duplicate/conflicting tag.
+- **Whitespace preservation**: The annotation is added/removed on the original line, preserving internal heading spacing and indentation.
+- **Mixed line endings**: LF and CRLF are preserved per line instead of being unified.
+
+### 🔒 Host Reliability
+- **`replaceNoteContent` bool is unreliable**: Some Amplenote versions resolve `false` even when the write succeeds. The plugin now confirms a `false` result by reading the note back; if the content changed the operation is treated as done, and if it is unchanged a `console.warn` is emitted. This removes the spurious "write rejected" error.
+- **Content-size guard**: Rejects writes exceeding Amplenote's 200,000-character limit before calling the API.
+- **Input coercion**: Numeric-string dialog values are coerced, and short/partial advanced-dialog result arrays are rejected.
+
+### 🧪 Tests & Docs
+- **68 tests** across 3 suites (markdown 29, api 27, header-collapse 12), including new regressions for nested fences, indented headings, mixed EOL, `collapsed:false`, write-result handling, size limits, and non-string content.
+- Rebuilt distribution bundle; synced `README`, `CODE_DOCUMENTATION`, `DESIGN_PHILOSOPHY`, `SECURITY`, and test reports.
+
+---
+
 ## v0.0.5 (2026-11-24)
 
 ### 🚀 New Features

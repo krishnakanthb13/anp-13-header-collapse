@@ -82,11 +82,12 @@ Only the checked levels will be modified. All other sections and untargeted head
 
 ## Key Features & Safety Architecture
 
-- 🛡️ **Fenced Code Block Protection**: Programming comments (e.g., `# comment` in Python, Ruby, Shell, R, Elixir) inside ```` ``` ```` or `~~~` blocks are strictly ignored and never modified.
-- 🎨 **Formatting & Emoji Friendly**: Headers containing emojis (`# 🚀 Launch`), inline formatting (`**bold**`, `*italic*`, `` `code` ``), or links (`[Docs](url)`) are preserved intact.
-- 🔄 **Whitespace Tolerance**: Detects Amplenote collapse comment tags regardless of JSON spacing variations (`<!-- {"collapsed":true} -->` or `<!-- {"collapsed": true} -->`), eliminating duplicate tags.
+- 🛡️ **Fenced Code Block Protection**: Programming comments (e.g., `# comment` in Python, Ruby, Shell, R, Elixir) inside ```` ``` ```` or `~~~` blocks are strictly ignored. A fence state machine tracks the marker character and length, so nested or longer fences (a ```` ```` ```` block containing ``` lines, or `~~~` inside a ``` block) are never closed early.
+- 🎨 **Formatting & Emoji Friendly**: Headers containing emojis (`# 🚀 Launch`), inline formatting (`**bold**`, `*italic*`, `` `code` ``), or links (`[Docs](url)`) are preserved intact. Headings indented by up to three spaces are also recognized.
+- 🔄 **Whitespace Tolerance**: Detects Amplenote collapse comment tags regardless of JSON spacing variations (`<!-- {"collapsed":true} -->` or `<!-- {"collapsed": true} -->`). A stale `{"collapsed": false}` annotation is normalized instead of duplicated, and internal heading spacing is preserved.
+- 🔒 **Host-Aware Writes**: Reads back the note after writing to confirm the change landed. Since some Amplenote versions report `false` even on a successful write, a failed-looking result is verified by re-reading and only logged to the console if the content truly did not change — the plugin never raises a spurious user-facing error.
 - ⚡ **Performance Optimized**: Compares note content before writing. If no headers were changed (e.g. note was already collapsed/expanded), the API write is skipped to prevent unnecessary note revisions and sync traffic.
-- 🖥️ **Cross-Platform CRLF Safety**: Maintains native Windows line endings (`\r\n`) without altering document formatting.
+- 🖥️ **Cross-Platform Line Endings**: Preserves each line's native terminator (LF, CRLF, or mixed) without altering document formatting.
 
 ---
 
@@ -104,9 +105,9 @@ anp-13-header-collapse/
 ├── build/
 │   └── header-collapse.compiled.js    ← Distribution bundle (IIFE wrapped, zero dependencies)
 ├── test/
-│   ├── markdown.test.js               ← Unit & regression tests for markdown processing (25 tests)
-│   ├── api.test.js                    ← Mocks & tests for Amplenote API wrappers (21 tests)
-│   └── header-collapse.test.js        ← End-to-end plugin orchestrator tests (8 tests)
+│   ├── markdown.test.js               ← Unit & regression tests for markdown processing (29 tests)
+│   ├── api.test.js                    ← Mocks & tests for Amplenote API wrappers (27 tests)
+│   └── header-collapse.test.js        ← End-to-end plugin orchestrator tests (12 tests)
 └── README.md                          ← Plugin documentation
 ```
 
@@ -117,12 +118,14 @@ node esbuild.js 13
 ```
 
 ### Running Tests
-Execute the full Jest test suite (54 unit, edge case, and regression tests):
+Execute the full Jest test suite (68 unit, edge case, and regression tests):
 ```bash
 $env:NODE_OPTIONS="--experimental-vm-modules"; npx jest "anp-13-header-collapse/test" --verbose
 ```
 
 ---
 
-## License
-MIT
+## 📄 License
+
+GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE) for full terms and conditions.  
+Copyright (C) 2026 Krishna Kanth B.

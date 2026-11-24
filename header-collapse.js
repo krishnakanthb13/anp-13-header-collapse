@@ -13,6 +13,17 @@ import {
   updateNoteContent
 } from "./lib/api.js";
 
+async function safeAlert(app, message) {
+  if (typeof app?.alert !== "function") {
+    return;
+  }
+  try {
+    await app.alert(message);
+  } catch (err) {
+    console.error("[HeaderCollapse] Failed to show alert:", err);
+  }
+}
+
 export default {
   async noteOption(app, noteUUID) {
     if (!app || !noteUUID) {
@@ -21,11 +32,8 @@ export default {
     }
 
     try {
-      const markdown = await fetchNoteContent(app, noteUUID);
-      if (typeof markdown !== "string") {
-        return;
-      }
-
+      // Prompt first, then read: this keeps the note snapshot fresh by minimizing the
+      // window between reading and writing (the write replaces the entire note).
       const action = await promptInitialAction(app);
       if (!action) {
         return;
@@ -45,17 +53,35 @@ export default {
         shouldCollapse = action === ACTION_OPTIONS.COLLAPSE_ALL;
       }
 
+      const markdown = await fetchNoteContent(app, noteUUID);
+      if (typeof markdown !== "string") {
+        await safeAlert(app, "Could not read the note content.");
+        return;
+      }
+
       const modifiedMarkdown = processMarkdown(markdown, shouldCollapse, targetLevels);
 
       // Performance: Skip write if markdown has not changed
       if (modifiedMarkdown !== markdown) {
-        await updateNoteContent(app, noteUUID, modifiedMarkdown);
+        const updated = await updateNoteContent(app, noteUUID, modifiedMarkdown);
+
+        // Some Amplenote versions resolve `false` even when the write succeeds
+        // (and the local content is updated), so the boolean is not trustworthy.
+        // Verify by reading back and only log if the content genuinely did not change.
+        // We intentionally do not raise a user-facing error here.
+        if (updated === false) {
+          const after = await fetchNoteContent(app, noteUUID);
+          if (typeof after === "string" && after === markdown) {
+            console.warn(
+              "[HeaderCollapse] replaceNoteContent resolved false and the note content is unchanged; " +
+                "the note may be locked or read-only."
+            );
+          }
+        }
       }
     } catch (err) {
       console.error("[HeaderCollapse] An error occurred in noteOption:", err);
-      if (typeof app?.alert === "function") {
-        await app.alert(`An error occurred while updating headers: ${err?.message || err}`);
-      }
+      await safeAlert(app, `An error occurred while updating headers: ${err?.message || err}`);
     }
   }
 };

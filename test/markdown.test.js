@@ -80,6 +80,35 @@ describe("markdown.js — processMarkdown", () => {
       const input = `# H1\n## H2 ${COLLAPSE_COMMENT}\n### H3`;
       expect(processMarkdown(input, false, [3])).toBe(input);
     });
+
+    test("collapses and expands headings indented by up to three spaces", () => {
+      const input = "   # Indented H1\n    ## Four-space is not a heading";
+      const collapsed = `   # Indented H1 ${COLLAPSE_COMMENT}\n    ## Four-space is not a heading`;
+      expect(processMarkdown(input, true)).toBe(collapsed);
+      expect(processMarkdown(collapsed, false)).toBe(input);
+    });
+
+    test("preserves internal spacing of headings it modifies", () => {
+      const input = "##    Heading with gaps";
+      expect(processMarkdown(input, true)).toBe(`##    Heading with gaps ${COLLAPSE_COMMENT}`);
+    });
+
+    test("normalizes a stale collapsed:false annotation instead of duplicating it", () => {
+      const input = '## Section <!-- {"collapsed": false} -->';
+      expect(processMarkdown(input, true)).toBe(`## Section ${COLLAPSE_COMMENT}`);
+    });
+
+    test("expands headings carrying collapsed:false annotations", () => {
+      const input = '## Section <!-- {"collapsed": false} -->';
+      expect(processMarkdown(input, false)).toBe("## Section");
+    });
+
+    test("preserves mixed line endings per line", () => {
+      const input = "# A\n## B\r\n### C";
+      expect(processMarkdown(input, true)).toBe(
+        `# A ${COLLAPSE_COMMENT}\n## B ${COLLAPSE_COMMENT}\r\n### C ${COLLAPSE_COMMENT}`
+      );
+    });
   });
 
   describe("Error Handling & Input Guards", () => {
@@ -95,9 +124,9 @@ describe("markdown.js — processMarkdown", () => {
       expect(processMarkdown("", true)).toBe("");
     });
 
-    test("handles non-string types safely without throwing", () => {
-      expect(processMarkdown(12345, true)).toBe(12345);
-      expect(processMarkdown({}, false)).toEqual({});
+    test("returns an empty string for non-string input without throwing", () => {
+      expect(processMarkdown(12345, true)).toBe("");
+      expect(processMarkdown({}, false)).toBe("");
     });
   });
 
@@ -116,6 +145,34 @@ describe("markdown.js — processMarkdown", () => {
     test("handles tilde fenced code blocks (~~~)", () => {
       const input = "~~~\n# Bash comment\necho 'hello'\n~~~\n## Header";
       const expected = `~~~\n# Bash comment\necho 'hello'\n~~~\n## Header ${COLLAPSE_COMMENT}`;
+      expect(processMarkdown(input, true)).toBe(expected);
+    });
+
+    test("does not close a four-backtick block on inner triple-backtick lines", () => {
+      const input = [
+        "````markdown",
+        "# inside four-backtick block should stay",
+        "```",
+        "# still inside",
+        "```",
+        "````",
+        "# Real Header"
+      ].join("\n");
+      const expected = [
+        "````markdown",
+        "# inside four-backtick block should stay",
+        "```",
+        "# still inside",
+        "```",
+        "````",
+        `# Real Header ${COLLAPSE_COMMENT}`
+      ].join("\n");
+      expect(processMarkdown(input, true)).toBe(expected);
+    });
+
+    test("does not treat a different fence character as a closing fence", () => {
+      const input = "```\n~~~\n# inside\n```\n# Real Header";
+      const expected = `\`\`\`\n~~~\n# inside\n\`\`\`\n# Real Header ${COLLAPSE_COMMENT}`;
       expect(processMarkdown(input, true)).toBe(expected);
     });
 

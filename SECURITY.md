@@ -40,7 +40,7 @@
    - Markdown manipulation is strictly text-based (`#`, `##`, `###`, etc.) and manipulates only HTML comments (`<!-- {"collapsed":true} -->`) compliant with Amplenote's native header folding format.
 
 4. **ReDoS (Regular Expression Denial of Service) Prevention**:
-   - Regex patterns (`HEADER_PATTERN = /^(#{1,6})(?:\s+(.*?)|$)\s*$/`, `COLLAPSE_TAG_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/i`, `CODE_BLOCK_FENCE_REGEX = /^\s*(```|~~~)/`) have bounded quantifier checks (`#{1,6}`) and non-nested quantifiers.
+   - Regex patterns (`HEADER_PATTERN = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/`, `COLLAPSE_TAG_REGEX`, `COLLAPSE_TAG_ANY_REGEX`, `COLLAPSE_TAG_GLOBAL_REGEX`, `CODE_FENCE_PATTERN = /^( {0,3})(`{3,}|~{3,})(.*)$/`) use bounded quantifiers (`#{1,6}`, `{3,}`, `{0,3}`) and non-nested quantifiers.
    - Execution time scales strictly linearly ($O(N)$) with the note line count, preventing CPU exhaustion or catastrophic backtracking.
 
 5. **Data Privacy & Zero Exfiltration**:
@@ -52,6 +52,8 @@
    - Both `promptInitialAction` and `promptAdvancedOptions` validate that returned action values strictly match recognized enum values (`ACTION_OPTIONS` and `ADVANCED_ACTION`) before resolving.
    - All Amplenote host calls (`app.prompt`, `app.alert`, `app.getNoteContent`, `app.replaceNoteContent`) are guarded by `try/catch` blocks and validate presence of `app` and `noteUUID`.
    - In `header-collapse.js`, `if (modifiedMarkdown !== markdown)` ensures the note is only rewritten if content actually changed, avoiding redundant database/sync writes.
+   - `updateNoteContent` rejects content over `MAX_NOTE_LENGTH` (200,000 chars) before calling the host, matching Amplenote's documented per-write cap.
+   - A `replaceNoteContent` result of `false` (which some host versions return even on success) is verified by re-reading the note; only a genuine no-op is logged via `console.warn`, never surfaced as an error. Alerting is wrapped in `safeAlert` so it cannot throw.
 
 7. **Supply Chain & Production Bundle**:
    - The compiled distribution bundle (`build/header-collapse.compiled.js`) has **zero external production runtime dependencies**.

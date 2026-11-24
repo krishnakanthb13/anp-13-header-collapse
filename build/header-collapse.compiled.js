@@ -60,55 +60,66 @@ var ADVANCED_PROMPT_CONFIG = {
   ]
 };
 var ALERT_NO_LEVELS = "Please select at least one header level to target!";
-var HEADER_PATTERN = /^(#{1,6})(?:\s+(.*?)|$)\s*$/;
+var HEADER_PATTERN = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
 var COLLAPSE_TAG_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/i;
-var COLLAPSE_TAG_GLOBAL_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*true\s*\}\s*-->/gi;
-var CODE_BLOCK_FENCE_REGEX = /^\s*(```|~~~)/;
+var COLLAPSE_TAG_ANY_REGEX = /<!--\s*\{\s*"collapsed"\s*:\s*(?:true|false)\s*\}\s*-->/i;
+var COLLAPSE_TAG_GLOBAL_REGEX = /[ \t]*<!--\s*\{\s*"collapsed"\s*:\s*(?:true|false)\s*\}\s*-->/gi;
+var CODE_FENCE_PATTERN = /^( {0,3})(`{3,}|~{3,})(.*)$/;
+var MAX_NOTE_LENGTH = 2e5;
 var COLLAPSE_COMMENT = '<!-- {"collapsed":true} -->';
 
 // anp-13-header-collapse/lib/markdown.js
 function processMarkdown(markdown, shouldCollapse, targetLevels = ALL_HEADER_LEVELS) {
   if (typeof markdown !== "string" || !markdown) {
-    return markdown ?? "";
+    return "";
   }
-  const isCRLF = markdown.includes("\r\n");
-  const newline = isCRLF ? "\r\n" : "\n";
-  const lines = markdown.split(/\r?\n/);
+  const parts = markdown.split(/(\r\n|\n|\r)/);
   const targetSet = new Set(targetLevels);
-  let inCodeBlock = false;
-  const modifiedLines = lines.map((line) => {
-    if (CODE_BLOCK_FENCE_REGEX.test(line)) {
-      inCodeBlock = !inCodeBlock;
-      return line;
+  let fence = null;
+  for (let i = 0; i < parts.length; i += 2) {
+    const line = parts[i];
+    const fenceMatch = line.match(CODE_FENCE_PATTERN);
+    if (fenceMatch) {
+      const marker = fenceMatch[2];
+      const char = marker[0];
+      const len = marker.length;
+      const rest = fenceMatch[3];
+      if (fence) {
+        if (char === fence.char && len >= fence.len && rest.trim() === "") {
+          fence = null;
+        }
+      } else {
+        fence = { char, len };
+      }
+      continue;
     }
-    if (inCodeBlock) {
-      return line;
+    if (fence) {
+      continue;
     }
     const headerMatch = line.match(HEADER_PATTERN);
     if (!headerMatch) {
-      return line;
+      continue;
     }
-    const hashes = headerMatch[1];
-    const level = hashes.length;
+    const level = headerMatch[1].length;
     if (!targetSet.has(level)) {
-      return line;
+      continue;
     }
-    const contentAndComment = (headerMatch[2] || "").trim();
-    const hasCollapse = COLLAPSE_TAG_REGEX.test(contentAndComment);
+    const hasCollapsedTrue = COLLAPSE_TAG_REGEX.test(line);
+    const hasAnyAnnotation = COLLAPSE_TAG_ANY_REGEX.test(line);
     if (shouldCollapse) {
-      if (!hasCollapse) {
-        return contentAndComment ? `${hashes} ${contentAndComment} ${COLLAPSE_COMMENT}` : `${hashes} ${COLLAPSE_COMMENT}`;
+      if (hasCollapsedTrue) {
+        continue;
       }
-      return line;
+      const cleaned = line.replace(COLLAPSE_TAG_GLOBAL_REGEX, "").replace(/[ \t]+$/, "");
+      parts[i] = `${cleaned} ${COLLAPSE_COMMENT}`;
     } else {
-      if (hasCollapse) {
-        const cleanContent = contentAndComment.replace(COLLAPSE_TAG_GLOBAL_REGEX, "").trim();
-        return cleanContent ? `${hashes} ${cleanContent}` : hashes;
+      if (!hasAnyAnnotation) {
+        continue;
       }
-      return line;
+      parts[i] = line.replace(COLLAPSE_TAG_GLOBAL_REGEX, "").replace(/[ \t]+$/, "");
     }
-  });
-  return modifiedLines.join(newline);
+  }
+  return parts.join("");
 }
 
 // anp-13-header-collapse/lib/api.js
@@ -121,10 +132,11 @@ async function promptInitialAction(app) {
   }
   try {
     const result = await app.prompt(INITIAL_PROMPT_MESSAGE, INITIAL_PROMPT_CONFIG);
-    if (!result || !VALID_INITIAL_ACTIONS.has(result)) {
+    const action = Number(result);
+    if (!result || !VALID_INITIAL_ACTIONS.has(action)) {
       return null;
     }
-    return result;
+    return action;
   } catch (err) {
     console.error("[HeaderCollapse] Failed to prompt user:", err);
     return null;
@@ -140,7 +152,11 @@ async function promptAdvancedOptions(app) {
     if (!result || !Array.isArray(result)) {
       return null;
     }
-    const [actionVal, h1, h2, h3, h4h6] = result;
+    if (result.length < ADVANCED_PROMPT_CONFIG.inputs.length) {
+      return null;
+    }
+    const [rawAction, h1, h2, h3, h4h6] = result;
+    const actionVal = Number(rawAction);
     if (!VALID_ADVANCED_ACTIONS.has(actionVal)) {
       return null;
     }
@@ -179,8 +195,13 @@ async function updateNoteContent(app, noteUUID, content) {
   if (!app?.replaceNoteContent || !noteUUID) {
     throw new Error("[HeaderCollapse] Invalid app instance or noteUUID for updateNoteContent");
   }
+  if (typeof content === "string" && content.length > MAX_NOTE_LENGTH) {
+    throw new Error(
+      `[HeaderCollapse] Note exceeds Amplenote's ${MAX_NOTE_LENGTH}-character write limit`
+    );
+  }
   try {
-    await app.replaceNoteContent({ uuid: noteUUID }, content);
+    return await app.replaceNoteContent({ uuid: noteUUID }, content) !== false;
   } catch (err) {
     console.error("[HeaderCollapse] Failed to replace note content:", err);
     throw err;
@@ -188,6 +209,16 @@ async function updateNoteContent(app, noteUUID, content) {
 }
 
 // anp-13-header-collapse/header-collapse.js
+async function safeAlert(app, message) {
+  if (typeof app?.alert !== "function") {
+    return;
+  }
+  try {
+    await app.alert(message);
+  } catch (err) {
+    console.error("[HeaderCollapse] Failed to show alert:", err);
+  }
+}
 var header_collapse_default = {
   async noteOption(app, noteUUID) {
     if (!app || !noteUUID) {
@@ -195,10 +226,6 @@ var header_collapse_default = {
       return;
     }
     try {
-      const markdown = await fetchNoteContent(app, noteUUID);
-      if (typeof markdown !== "string") {
-        return;
-      }
       const action = await promptInitialAction(app);
       if (!action) {
         return;
@@ -215,15 +242,26 @@ var header_collapse_default = {
       } else {
         shouldCollapse = action === ACTION_OPTIONS.COLLAPSE_ALL;
       }
+      const markdown = await fetchNoteContent(app, noteUUID);
+      if (typeof markdown !== "string") {
+        await safeAlert(app, "Could not read the note content.");
+        return;
+      }
       const modifiedMarkdown = processMarkdown(markdown, shouldCollapse, targetLevels);
       if (modifiedMarkdown !== markdown) {
-        await updateNoteContent(app, noteUUID, modifiedMarkdown);
+        const updated = await updateNoteContent(app, noteUUID, modifiedMarkdown);
+        if (updated === false) {
+          const after = await fetchNoteContent(app, noteUUID);
+          if (typeof after === "string" && after === markdown) {
+            console.warn(
+              "[HeaderCollapse] replaceNoteContent resolved false and the note content is unchanged; the note may be locked or read-only."
+            );
+          }
+        }
       }
     } catch (err) {
       console.error("[HeaderCollapse] An error occurred in noteOption:", err);
-      if (typeof app?.alert === "function") {
-        await app.alert(`An error occurred while updating headers: ${err?.message || err}`);
-      }
+      await safeAlert(app, `An error occurred while updating headers: ${err?.message || err}`);
     }
   }
 };

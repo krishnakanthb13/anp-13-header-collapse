@@ -97,6 +97,7 @@ describe("header-collapse.js — Plugin Orchestrator", () => {
 
   describe("Error Handling", () => {
     test("catches error during execution and alerts the user", async () => {
+      mockApp.prompt.mockResolvedValue(ACTION_OPTIONS.COLLAPSE_ALL);
       mockApp.getNoteContent.mockRejectedValue(new Error("Network timeout"));
 
       await plugin.noteOption(mockApp, testUUID);
@@ -104,6 +105,46 @@ describe("header-collapse.js — Plugin Orchestrator", () => {
       expect(mockApp.alert).toHaveBeenCalledWith(
         expect.stringContaining("An error occurred while updating headers: Network timeout")
       );
+    });
+
+    test("does not alert when the host resolves false but the write actually applied", async () => {
+      mockApp.prompt.mockResolvedValue(ACTION_OPTIONS.COLLAPSE_ALL);
+      const original = "# Header 1";
+      const collapsed = `# Header 1 ${COLLAPSE_COMMENT}`;
+      // First read = original, re-read after write = collapsed (host lied with false).
+      mockApp.getNoteContent
+        .mockResolvedValueOnce(original)
+        .mockResolvedValueOnce(collapsed);
+      mockApp.replaceNoteContent.mockResolvedValue(false);
+
+      await plugin.noteOption(mockApp, testUUID);
+
+      expect(mockApp.replaceNoteContent).toHaveBeenCalledWith({ uuid: testUUID }, collapsed);
+      expect(mockApp.alert).not.toHaveBeenCalled();
+    });
+
+    test("does not raise a user-facing error when the host resolves false but content is unchanged", async () => {
+      mockApp.prompt.mockResolvedValue(ACTION_OPTIONS.COLLAPSE_ALL);
+      // Both reads return the original: the write never took effect.
+      mockApp.getNoteContent.mockResolvedValue("# Header 1");
+      mockApp.replaceNoteContent.mockResolvedValue(false);
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      await plugin.noteOption(mockApp, testUUID);
+
+      expect(mockApp.alert).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("note may be locked or read-only"));
+      warnSpy.mockRestore();
+    });
+
+    test("alerts when the note content is not a string", async () => {
+      mockApp.prompt.mockResolvedValue(ACTION_OPTIONS.COLLAPSE_ALL);
+      mockApp.getNoteContent.mockResolvedValue(null);
+
+      await plugin.noteOption(mockApp, testUUID);
+
+      expect(mockApp.alert).toHaveBeenCalledWith("Could not read the note content.");
+      expect(mockApp.replaceNoteContent).not.toHaveBeenCalled();
     });
   });
 });

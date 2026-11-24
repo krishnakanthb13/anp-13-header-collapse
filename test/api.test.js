@@ -114,6 +114,18 @@ describe("api.js — Amplenote API Client", () => {
         const result = await promptAdvancedOptions(mockApp);
         expect(result).toBeNull();
       });
+
+      test("returns null for a short/partial result array", async () => {
+        mockApp.prompt.mockResolvedValue([ADVANCED_ACTION.COLLAPSE, true, false]);
+        const result = await promptAdvancedOptions(mockApp);
+        expect(result).toBeNull();
+      });
+
+      test("coerces a numeric-string action value", async () => {
+        mockApp.prompt.mockResolvedValue(["1", true, true, false, false]);
+        const result = await promptAdvancedOptions(mockApp);
+        expect(result).toEqual({ shouldCollapse: true, targetLevels: [1, 2] });
+      });
     });
 
     describe("Error Handling", () => {
@@ -158,10 +170,17 @@ describe("api.js — Amplenote API Client", () => {
 
   describe("updateNoteContent", () => {
     describe("Happy Path", () => {
-      test("replaces note content successfully", async () => {
+      test("replaces note content successfully and reports success", async () => {
         mockApp.replaceNoteContent.mockResolvedValue(undefined);
-        await updateNoteContent(mockApp, "note-uuid-123", "# Updated Markdown");
+        const result = await updateNoteContent(mockApp, "note-uuid-123", "# Updated Markdown");
+        expect(result).toBe(true);
         expect(mockApp.replaceNoteContent).toHaveBeenCalledWith({ uuid: "note-uuid-123" }, "# Updated Markdown");
+      });
+
+      test("returns false when the host reports the write was not performed", async () => {
+        mockApp.replaceNoteContent.mockResolvedValue(false);
+        const result = await updateNoteContent(mockApp, "note-uuid-123", "# Updated Markdown");
+        expect(result).toBe(false);
       });
     });
 
@@ -177,6 +196,14 @@ describe("api.js — Amplenote API Client", () => {
       test("rethrows when app.replaceNoteContent rejects", async () => {
         mockApp.replaceNoteContent.mockRejectedValue(new Error("Write permission denied"));
         await expect(updateNoteContent(mockApp, "note-uuid-123", "content")).rejects.toThrow("Write permission denied");
+      });
+
+      test("throws before writing when content exceeds the 200,000-character limit", async () => {
+        const tooLong = "x".repeat(200001);
+        await expect(updateNoteContent(mockApp, "note-uuid-123", tooLong)).rejects.toThrow(
+          "200000-character write limit"
+        );
+        expect(mockApp.replaceNoteContent).not.toHaveBeenCalled();
       });
     });
   });

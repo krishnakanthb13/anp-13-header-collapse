@@ -1,39 +1,42 @@
 ================================================================================
 TEST REPORT — HEADER COLLAPSE (anp-13-header-collapse)
 Date: 2026-11-24
-Auditor: Agent (scaffold_tests + anp_test)
+Version: v0.0.6
 Target Bundle: anp-13-header-collapse/build/header-collapse.compiled.js
 ================================================================================
 
 METRIC SUMMARY:
 - Total Test Suites: 3 / 3 PASSED
-- Total Tests: 54
-- Passed: 54
+- Total Tests: 68
+- Passed: 68
 - Failed: 0
 - Skipped: 0
 - Pass Rate: 100%
 - Confidence Score: 10/10
-- Regression Coverage: Yes (Full)
 
 TEST SUITE BREAKDOWN:
-1. test/markdown.test.js (25 tests)
-   - Happy Path: Standard H1-H3 collapse/expand, emojis, markdown formatting, full notes, selective level targeting ([1], [2, 3]).
-   - Edge Cases: Empty headings, hash-only headings, non-header 7+ hashes, CRLF preservation, untargeted levels untouched.
-   - Error Handling: Null, undefined, empty string, non-string input guards.
-   - Regression: Fenced code block preservation (``` and ~~~), whitespace tolerance in JSON collapse comments.
+1. test/markdown.test.js (29 tests)
+   - Happy Path: Standard H1-H3 collapse/expand, emojis, markdown formatting, full notes, selective level targeting.
+   - Edge Cases: Empty/hash-only headings, 7+ hashes ignored, CRLF preservation, untargeted levels, indented headings (1-3 spaces), internal spacing preservation, collapsed:false normalization, mixed LF/CRLF.
+   - Error Handling: Null, undefined, empty string, non-string input guards (returns "").
+   - Regression: Fenced code block preservation, nested four-backtick blocks containing ``` lines, ~~~ inside a ``` block, JSON whitespace tolerance.
 
-2. test/api.test.js (21 tests)
-   - promptInitialAction: Collapse All (1), Expand All (2), Advanced (3), cancellation handling, unrecognized actions, null/missing app safety, rejection recovery.
-   - promptAdvancedOptions: Selective level extraction, cancellation, empty level selection warning alert, invalid action handling, error recovery.
-   - fetchNoteContent: Successful markdown retrieval, input validation guards, error propagation.
-   - updateNoteContent: Successful replacement, input validation guards, error propagation.
+2. test/api.test.js (27 tests)
+   - promptInitialAction: Collapse All (1), Expand All (2), Advanced (3), cancellation, unrecognized actions, numeric coercion, error recovery.
+   - promptAdvancedOptions: Level extraction, cancellation, empty selection warning, invalid action, short/partial array rejection, numeric-string coercion, error recovery.
+   - fetchNoteContent: Retrieval, input validation, error propagation.
+   - updateNoteContent: Success boolean, false-on-not-performed, 200,000-char limit guard, input validation, error propagation.
 
-3. test/header-collapse.test.js (8 tests)
-   - noteOption Orchestration: Collapse All flow, Expand All flow, Advanced selective level flow.
-   - Optimizations: Unchanged content write skipping (avoids redundant API writes).
+3. test/header-collapse.test.js (12 tests)
+   - noteOption Orchestration: Collapse All, Expand All, Advanced selective flows; unchanged-content write skipping.
    - Defensive Boundaries: Null/missing app, missing noteUUID, prompt cancellation at Stage 1 and Stage 2.
-   - Error Handling: Exception catch boundary and user alert notification.
+   - Error Handling: Exception alert boundary; false-with-applied-write (no alert); false-with-unchanged-content (console warn, no alert); non-string content alert.
+
+NOTES:
+- Some Amplenote versions resolve replaceNoteContent with false even after a successful
+  write. Both branches are covered by read-back verification tests.
+- The stray header-collapse.test.log artifact was removed in v0.0.6.
 
 ================================================================================
-STATUS: ALL 54 TESTS PASSING (100% PASS RATE)
+STATUS: ALL 68 TESTS PASSING (100% PASS RATE)
 ================================================================================
